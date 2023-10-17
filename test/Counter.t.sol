@@ -17,111 +17,114 @@ import {TestPoolManager} from "test/utils/TestPoolManager.sol";
 import {CounterHook, CounterFactory} from "src/CounterHook.sol";
 import {CallType} from "src/router/UniswapV4Router.sol";
 
-/// Hooks and test are based off of https://github.com/naddison36/uniswap-v4-hooks/blob/f47e5bd14a551b3a44b737123150ae8cf29e25a1/test/Counter.t.sol
+/// Hooks and test are based off of
+/// https://github.com/naddison36/uniswap-v4-hooks/blob/f47e5bd14a551b3a44b737123150ae8cf29e25a1/test/Counter.t.sol
 contract CounterTest is Test, TestPoolManager, Deployers, GasSnapshot {
-    using PoolIdLibrary for PoolKey;
-    using CurrencyLibrary for Currency;
+  using PoolIdLibrary for PoolKey;
+  using CurrencyLibrary for Currency;
 
-    CounterHook hook;
-    PoolKey poolKey;
+  CounterHook hook;
+  PoolKey poolKey;
 
-    function setUp() public {
-        // creates the pool manager, test tokens and generic routers
-        TestPoolManager.poolInitialize();
+  function setUp() public {
+    // creates the pool manager, test tokens and generic routers
+    TestPoolManager.poolInitialize();
 
-        // Deploy the CounterHook factory
-        CounterFactory factory = new CounterFactory();
-        // Use the factory to create a new CounterHook contract
-        hook = CounterHook(factory.mineDeploy(manager));
+    // Deploy the CounterHook factory
+    CounterFactory factory = new CounterFactory();
+    // Use the factory to create a new CounterHook contract
+    hook = CounterHook(factory.mineDeploy(manager));
 
-        // Create the pool
-        poolKey = PoolKey(
-            Currency.wrap(address(tokenA)),
-            Currency.wrap(address(tokenB)),
-            FeeLibrary.HOOK_SWAP_FEE_FLAG | FeeLibrary.HOOK_WITHDRAW_FEE_FLAG | uint24(3000),
-            60,
-            IHooks(hook)
-        );
-        manager.initialize(poolKey, SQRT_RATIO_1_1, "");
+    // Create the pool
+    poolKey = PoolKey(
+      Currency.wrap(address(tokenA)),
+      Currency.wrap(address(tokenB)),
+      FeeLibrary.HOOK_SWAP_FEE_FLAG | FeeLibrary.HOOK_WITHDRAW_FEE_FLAG | uint24(3000),
+      60,
+      IHooks(hook)
+    );
+    manager.initialize(poolKey, SQRT_RATIO_1_1, "");
 
-        // Provide liquidity over different ranges to the pool
-        caller.addLiquidity(poolKey, address(this), -60, 60, 10 ether);
-        caller.addLiquidity(poolKey, address(this), -120, 120, 10 ether);
-        caller.addLiquidity(poolKey, address(this), TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether);
-    }
+    // Provide liquidity over different ranges to the pool
+    caller.addLiquidity(poolKey, address(this), -60, 60, 10 ether);
+    caller.addLiquidity(poolKey, address(this), -120, 120, 10 ether);
+    caller.addLiquidity(
+      poolKey, address(this), TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether
+    );
+  }
 
-    function testAddLiquidity() public {
-        caller.addLiquidity(poolKey, address(this), -60, 60, 10 ether);
-    }
+  function test_AddLiquidity() public {
+    caller.addLiquidity(poolKey, address(this), -60, 60, 10 ether);
+  }
 
-    function testCounterHookFees() public {
-        // Check the hook fee
-        (Pool.Slot0 memory slot0,,,) = manager.pools(poolKey.toId());
-        assertEq(slot0.hookFees, 0x5533);
+  function test_CounterHookFees() public {
+    // Check the hook fee
+    (Pool.Slot0 memory slot0,,,) = manager.pools(poolKey.toId());
+    assertEq(slot0.hookFees, 0x5533);
 
-        assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency0), 0);
-        assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency1), 0);
-    }
+    assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency0), 0);
+    assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency1), 0);
+  }
 
-    function testCounterSwap() public {
-        assertEq(hook.beforeSwapCounter(), 100);
-        assertEq(hook.afterSwapCounter(), 200);
+  function test_CounterSwap() public {
+    assertEq(hook.beforeSwapCounter(), 100);
+    assertEq(hook.afterSwapCounter(), 200);
 
-        // Perform a test swap
-        caller.swap(poolKey, address(this), address(this), poolKey.currency0, 1e18);
+    // Perform a test swap
+    caller.swap(poolKey, address(this), address(this), poolKey.currency0, 1e18);
 
-        assertEq(hook.beforeSwapCounter(), 101);
-        assertEq(hook.afterSwapCounter(), 201);
+    assertEq(hook.beforeSwapCounter(), 101);
+    assertEq(hook.afterSwapCounter(), 201);
 
-        assertGt(manager.hookFeesAccrued(address(hook), poolKey.currency0), 0);
-        assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency1), 0);
-    }
+    assertGt(manager.hookFeesAccrued(address(hook), poolKey.currency0), 0);
+    assertEq(manager.hookFeesAccrued(address(hook), poolKey.currency1), 0);
+  }
 
-    function testCounterSwapFromPoolManager() public {
-        // Perform a deposit to the pool manager
-        caller.deposit(address(tokenB), address(this), address(this), 2e18);
+  function test_CounterSwapFromPoolManager() public {
+    // Perform a deposit to the pool manager
+    caller.deposit(address(tokenB), address(this), address(this), 2e18);
 
-        // The tester needs to approve the router to spend their tokens in the Pool Manager
-        manager.setApprovalForAll(address(caller), true);
-        assertTrue(manager.isApprovedForAll(address(this), address(caller)));
+    // The tester needs to approve the router to spend their tokens in the Pool Manager
+    manager.setApprovalForAll(address(caller), true);
+    assertTrue(manager.isApprovedForAll(address(this), address(caller)));
 
-        // Perform a test swap of ERC1155 tokens
-        caller.swapManagerTokens(poolKey, poolKey.currency1, 2e18, address(this));
+    // Perform a test swap of ERC1155 tokens
+    caller.swapManagerTokens(poolKey, poolKey.currency1, 2e18, address(this));
 
-        // Revoke the tester's approval of the router as anyone can send calls to the router
-        manager.setApprovalForAll(address(caller), false);
-    }
+    // Revoke the tester's approval of the router as anyone can send calls to the router
+    manager.setApprovalForAll(address(caller), false);
+  }
 
-    function testDepositTokenA() public {
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 0);
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
+  function test_DepositTokenA() public {
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 0);
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
 
-        // Perform a deposit to the pool manager
-        caller.deposit(address(tokenA), address(this), address(this), 1e18);
+    // Perform a deposit to the pool manager
+    caller.deposit(address(tokenA), address(this), address(this), 1e18);
 
-        // Check tester's balance has been updated
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 1e18);
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
-    }
+    // Check tester's balance has been updated
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 1e18);
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
+  }
 
-    function testWithdrawTokenA() public {
-        // Perform a deposit to the pool manager
-        caller.deposit(address(tokenA), address(this), address(this), 10e18);
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 10e18);
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
+  function test_WithdrawTokenA() public {
+    // Perform a deposit to the pool manager
+    caller.deposit(address(tokenA), address(this), address(this), 10e18);
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 10e18);
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
 
-        // The tester needs to approve the caller contract to spend their tokens in the Pool Manager
-        manager.setApprovalForAll(address(caller), true);
+    // The tester needs to approve the caller contract to spend their tokens in the Pool Manager
+    manager.setApprovalForAll(address(caller), true);
 
-        caller.withdraw(address(tokenA), address(this), 6e18);
+    caller.withdraw(address(tokenA), address(this), 6e18);
 
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 4e18);
-        assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
-    }
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenA))), 4e18);
+    assertEq(manager.balanceOf(address(this), uint160(address(tokenB))), 0);
+  }
 
-    function testFlashLoan() public {
-        // Perform a flash loan
-        bytes memory callbackData = abi.encodeWithSelector(tokenA.balanceOf.selector, router);
-        caller.flashLoan(address(tokenA), 1e6, address(tokenA), CallType.Call, callbackData);
-    }
+  function test_FlashLoan() public {
+    // Perform a flash loan
+    bytes memory callbackData = abi.encodeWithSelector(tokenA.balanceOf.selector, router);
+    caller.flashLoan(address(tokenA), 1e6, address(tokenA), CallType.Call, callbackData);
+  }
 }
