@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
 
 import {MockToken} from "test/mocks/MockToken.sol";
 import {UniswapV4Router} from "src/router/UniswapV4Router.sol";
