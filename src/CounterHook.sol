@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {IHookFeeManager} from "@uniswap/v4-core/contracts/interfaces/IHookFeeManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {IHookFeeManager} from "v4-core/interfaces/IHookFeeManager.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PoolKey, PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {BaseHook} from "v4-periphery/BaseHook.sol";
 
 import {BaseFactory} from "src/BaseFactory.sol";
