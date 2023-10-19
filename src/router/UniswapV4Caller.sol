@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PoolKey} from "v4-core/types/PoolId.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 
 import {CallType, UniswapV4Router} from "src/router/UniswapV4Router.sol";
 import {UniswapV4RouterLibrary} from "src/router/UniswapV4RouterLibrary.sol";

@@ -3,15 +3,15 @@ pragma solidity 0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {FeeLibrary} from "@uniswap/v4-core/contracts/libraries/FeeLibrary.sol";
-import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {FeeLibrary} from "v4-core/libraries/FeeLibrary.sol";
+import {Pool} from "v4-core/libraries/Pool.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PoolKey, PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 
 import {TestPoolManager} from "test/utils/TestPoolManager.sol";
 import {CounterHook, CounterFactory} from "src/CounterHook.sol";
