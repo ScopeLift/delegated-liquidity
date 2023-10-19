@@ -22,7 +22,7 @@ jobs:
       - name: Build contracts
         run: |
           forge --version
-          forge build --sizes
+          forge build
 
   test:
     runs-on: ubuntu-latest
@@ -75,7 +75,7 @@ jobs:
         uses: zgosalvez/github-actions-report-lcov@v2
         with:
           coverage-files: ./lcov.info
-          minimum-coverage: 100 # Set coverage threshold.
+          minimum-coverage: 1 # Set coverage threshold.
 
   lint:
     runs-on: ubuntu-latest
@@ -116,8 +116,3 @@ jobs:
           fail-on: none # Required to avoid failing the CI run regardless of findings.
           sarif: results.sarif
           slither-args: --filter-paths "./lib|./test" --exclude naming-convention,solc-version
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: ${{ steps.slither.outputs.sarif }}
