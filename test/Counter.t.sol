@@ -128,3 +128,14 @@ contract CounterTest is Test, TestPoolManager, Deployers, GasSnapshot {
     caller.flashLoan(address(tokenA), 1e6, address(tokenA), CallType.Call, callbackData);
   }
 }
+
+/**
+ * Test harness setup needed (in another file) for the hook:
+ * 1. Deploy an ERC20Votes token that will be used in the pool
+ * 2. Deploy a non-ERC20Votes mock token that will be the other side of the pool
+ * 3. Mint quantities of both and deposit them
+ * 4. ERC20Votes token should be connected to a GovernorCountingFractional Governor which must
+ * also be deployed
+ * 5. Set up a proposal in the Governor and move it to the state of being ready to be voted on
+ * 6. Finally, demonstrate the LP to the pool can vote (through the pool) on the proposal in the Governor
+ */
