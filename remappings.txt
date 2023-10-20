@@ -3,3 +3,5 @@
 @openzeppelin/=lib/openzeppelin-contracts/
 openzeppelin-v4/=lib/openzeppelin-contracts/
 flexible-voting/=lib/flexible-voting/src/
+openzeppelin-flexible-voting/=lib/flexible-voting/lib/openzeppelin-contracts/contracts/
+
