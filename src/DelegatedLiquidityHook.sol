@@ -123,7 +123,7 @@ contract DelegatedFlexClient is DelegatedLiquidityHook, FlexVotingClient {
     FlexVotingClient(_governor)
   {}
 
-  function _rawBalanceOf(address _user) public override returns (uint256) {
+  function _rawBalanceOf(address _user) internal view override returns (uint256) {
     uint256 _rawBalance;
     for (uint256 i = 0; i < positionsByAddress[_user].length; i++) {
       _rawBalance += getPastBalance(positionsByAddress[_user][i], block.number);
