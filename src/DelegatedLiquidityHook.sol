@@ -21,6 +21,12 @@ contract DelegatedLiquidityHook is BaseHook {
 
   constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
+  /*
+    Our contract stores the gov token address (part of constructor)
+    Receives the afterInitialize callback and records which token (token0 or token1) is the gov token
+    Uses this to return appropriate values in other methods
+   */
+
   function getHooksCalls() public pure override returns (Hooks.Calls memory) {
     return Hooks.Calls({
       beforeInitialize: false,
@@ -41,6 +47,11 @@ contract DelegatedLiquidityHook is BaseHook {
     BalanceDelta,
     bytes calldata
   ) external override returns (bytes4 selector) {
+    /*
+     1. Save tickLower & tickUpper into a mapping for this position id
+     2. Checkpoint position liquidity
+     3. Checkpoint pool price
+    */
     // checkpoint position
     bytes32 positionKey =
       keccak256(abi.encodePacked(sender, modifyParams.tickLower, modifyParams.tickUpper));
@@ -123,6 +134,13 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
     public
     returns (uint256, uint256)
   {
+    /*
+     1. Lookup the tick boundries for this position Id
+     2. Lookup checkpointed liquidity for this position Id
+     3. Lookup checkpointed price for total pool
+     4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens the user is entitled to vote with
+     5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token during initialize callback
+    */
     uint160 price = poolCheckpoints.getAtProbablyRecentBlock(blockNumber);
     uint256 liquidity = positionCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
     return LiquidityAmounts.getAmountsForLiquidity(
