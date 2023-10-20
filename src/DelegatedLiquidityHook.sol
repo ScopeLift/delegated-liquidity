@@ -56,7 +56,6 @@ contract DelegatedLiquidityHook is BaseHook {
     int24, // tick
     bytes calldata // hookData
   ) external override returns (bytes4 selector) {
-    //
     isGovToken0 = Currency.unwrap(key.currency0) == GOV_TOKEN;
     // If neither token in the pair is the gov token, revert
     if (!isGovToken0 && Currency.unwrap(key.currency1) != GOV_TOKEN) {
