@@ -34,9 +34,9 @@ contract DelegatedLiquidityHook is BaseHook {
     return Hooks.Calls({
       beforeInitialize: false,
       afterInitialize: true,
-      beforeModifyPosition: true,
+      beforeModifyPosition: false,
       afterModifyPosition: true,
-      beforeSwap: true,
+      beforeSwap: false,
       afterSwap: true,
       beforeDonate: false,
       afterDonate: false
