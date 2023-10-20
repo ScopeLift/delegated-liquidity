@@ -17,8 +17,10 @@ contract DelegatedLiquidityHook is BaseHook {
   using PoolIdLibrary for PoolKey;
   using Checkpoints for Checkpoints.History;
 
-  mapping(bytes32 positionId => Checkpoints.History) internal positionCheckpoints;
-  Checkpoints.History internal poolCheckpoints;
+  mapping(bytes32 positionId => Checkpoints.History) internal positionLiquidityCheckpoints;
+  Checkpoints.History internal priceCheckpoints;
+
+  mapping(bytes32 positionId => int24[2]) internal positionTicks;
 
   bool public isGovToken0;
   address immutable GOV_TOKEN;
@@ -67,25 +69,24 @@ contract DelegatedLiquidityHook is BaseHook {
     BalanceDelta,
     bytes calldata
   ) external override returns (bytes4 selector) {
-    /*
-     1. Save tickLower & tickUpper into a mapping for this position id
-     2. Checkpoint position liquidity
-     3. Checkpoint pool price
-    */
-    // checkpoint position
-    bytes32 positionKey =
+    bytes32 positionId =
       keccak256(abi.encodePacked(sender, modifyParams.tickLower, modifyParams.tickUpper));
+
+    // Save tickLower & tickUpper into a mapping for this position id
+    positionTicks[positionId] = [modifyParams.tickLower, modifyParams.tickUpper];
+
     // get current liquidity
-    uint256 liquidity = positionCheckpoints[positionKey].latest();
-    // Do we track the liquidity or use the balance delta
+    uint256 liquidity = positionLiquidityCheckpoints[positionId].latest();
     uint256 liquidityNext = modifyParams.liquidityDelta < 0
       ? liquidity - uint256(-modifyParams.liquidityDelta)
       : liquidity + uint256(modifyParams.liquidityDelta);
 
-    positionCheckpoints[positionKey].push(liquidityNext);
+    // checkpoint position liquidity
+    positionLiquidityCheckpoints[positionId].push(liquidityNext);
 
-    (uint160 price,,,) = poolManager.getSlot0(key.toId());
-    poolCheckpoints.push(price);
+    // Checkpoint pool price
+    (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+    priceCheckpoints.push(sqrtPriceX96);
 
     selector = BaseHook.afterModifyPosition.selector;
   }
@@ -98,7 +99,7 @@ contract DelegatedLiquidityHook is BaseHook {
     bytes calldata
   ) external override returns (bytes4 selector) {
     (uint160 price,,,) = poolManager.getSlot0(key.toId());
-    poolCheckpoints.push(price);
+    priceCheckpoints.push(price);
     selector = BaseHook.afterSwap.selector;
   }
 }
@@ -161,12 +162,14 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
      2. Lookup checkpointed liquidity for this position Id
      3. Lookup checkpointed price for total pool
     4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens
-    the user is entitled to vote with
+    the user is entitled to vote with //
+    https://github.com/Uniswap/v4-periphery/blob/main/contracts/libraries/LiquidityAmounts.sol#L117-L134
     5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token
     during initialize callback
     */
-    uint160 price = poolCheckpoints.getAtProbablyRecentBlock(blockNumber);
-    uint256 liquidity = positionCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
+    uint160 price = priceCheckpoints.getAtProbablyRecentBlock(blockNumber);
+    uint256 liquidity =
+      positionLiquidityCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
     return LiquidityAmounts.getAmountsForLiquidity(
       price, positionId[21:24], positionId[24:27], liquidity
     ); // Slice these using bit operations
