@@ -9,35 +9,60 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {Checkpoints} from "openzeppelin-v4/contracts/utils/Checkpoints.sol";
 import {SafeCast} from "openzeppelin-v4/contracts/utils/math/SafeCast.sol";
-
+import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IFractionalGovernor} from "flexible-voting/interfaces/IFractionalGovernor.sol";
+import {FlexVotingClient} from "flexible-voting/FlexVotingClient.sol";
 
 contract DelegatedLiquidityHook is BaseHook {
   using PoolIdLibrary for PoolKey;
   using Checkpoints for Checkpoints.History;
 
-  mapping(bytes32 positionId => Checkpoints.History) internal positionCheckpoints;
-  Checkpoints.History internal poolCheckpoints;
+  mapping(bytes32 positionId => Checkpoints.History) internal positionLiquidityCheckpoints;
+  Checkpoints.History internal priceCheckpoints;
+  mapping(bytes32 positionId => int24[2]) internal positionTicks;
 
-  constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+  mapping(address => bytes32[]) internal positionsByAddress;
+  mapping(bytes32 => bool) internal seenPosition;
 
-  /*
-    Our contract stores the gov token address (part of constructor)
-    Receives the afterInitialize callback and records which token (token0 or token1) is the gov token
-    Uses this to return appropriate values in other methods
-   */
+  bool public isGovToken0;
+  address immutable GOV_TOKEN;
+
+  constructor(IPoolManager _poolManager, address _governor) BaseHook(_poolManager) {
+    GOV_TOKEN = IFractionalGovernor(_governor).token();
+  }
 
   function getHooksCalls() public pure override returns (Hooks.Calls memory) {
     return Hooks.Calls({
       beforeInitialize: false,
-      afterInitialize: false,
-      beforeModifyPosition: true,
+      afterInitialize: true,
+      beforeModifyPosition: false,
       afterModifyPosition: true,
-      beforeSwap: true,
+      beforeSwap: false,
       afterSwap: true,
       beforeDonate: false,
       afterDonate: false
     });
+  }
+
+  /**
+   * @notice Callback after a pool is initialized. Record which token (token0 or token1) is the gov
+   * token, to return appropriate values in other methods
+   */
+  function afterInitialize(
+    address, // sender
+    PoolKey calldata key,
+    uint160, // sqrtPriceX96
+    int24, // tick
+    bytes calldata // hookData
+  ) external override returns (bytes4 selector) {
+    //
+    isGovToken0 = Currency.unwrap(key.currency0) == GOV_TOKEN;
+    // If neither token in the pair is the gov token, revert
+    if (!isGovToken0 && Currency.unwrap(key.currency1) != GOV_TOKEN) {
+      revert("Currency pair does not include governor token");
+    }
+    selector = BaseHook.afterInitialize.selector;
   }
 
   function afterModifyPosition(
@@ -47,25 +72,30 @@ contract DelegatedLiquidityHook is BaseHook {
     BalanceDelta,
     bytes calldata
   ) external override returns (bytes4 selector) {
-    /*
-     1. Save tickLower & tickUpper into a mapping for this position id
-     2. Checkpoint position liquidity
-     3. Checkpoint pool price
-    */
-    // checkpoint position
-    bytes32 positionKey =
+    bytes32 positionId =
       keccak256(abi.encodePacked(sender, modifyParams.tickLower, modifyParams.tickUpper));
+
+    // Save tickLower & tickUpper into a mapping for this position id
+    positionTicks[positionId] = [modifyParams.tickLower, modifyParams.tickUpper];
+
     // get current liquidity
-    uint256 liquidity = positionCheckpoints[positionKey].latest();
-    // Do we track the liquidity or use the balance delta
+    uint256 liquidity = positionLiquidityCheckpoints[positionId].latest();
     uint256 liquidityNext = modifyParams.liquidityDelta < 0
       ? liquidity - uint256(-modifyParams.liquidityDelta)
       : liquidity + uint256(modifyParams.liquidityDelta);
 
-    positionCheckpoints[positionKey].push(liquidityNext);
+    // checkpoint position liquidity
+    positionLiquidityCheckpoints[positionId].push(liquidityNext);
 
-    (uint160 price,,,) = poolManager.getSlot0(key.toId());
-    poolCheckpoints.push(price);
+    // Checkpoint pool price
+    (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+    priceCheckpoints.push(sqrtPriceX96);
+
+    // Record position for address
+    if (seenPosition[positionId] == false) {
+      seenPosition[positionId] = true;
+      positionsByAddress[sender].push(positionId);
+    }
 
     selector = BaseHook.afterModifyPosition.selector;
   }
@@ -78,119 +108,40 @@ contract DelegatedLiquidityHook is BaseHook {
     bytes calldata
   ) external override returns (bytes4 selector) {
     (uint160 price,,,) = poolManager.getSlot0(key.toId());
-    poolCheckpoints.push(price);
+    priceCheckpoints.push(price);
     selector = BaseHook.afterSwap.selector;
   }
 }
 
-contract DelegatedFlexClient is DelegatedLiquidityHook {
+contract DelegatedFlexClient is DelegatedLiquidityHook, FlexVotingClient {
   using Checkpoints for Checkpoints.History;
-  /// @dev Data structure to store vote preferences expressed by depositors.
-  // TODO: Does it matter if we use a uint128 vs a uint256?
-
-  struct ProposalVote {
-    uint128 againstVotes;
-    uint128 forVotes;
-    uint128 abstainVotes;
-  }
-
-  /// @dev The voting options corresponding to those used in the Governor.
-  enum VoteType {
-    Against,
-    For,
-    Abstain
-  }
-
-  /// @dev Thrown when an address has no voting weight on a proposal.
-  error NoWeight();
-
-  /// @dev Thrown when an address has already voted.
-  error AlreadyVoted();
-
-  /// @dev Thrown when an invalid vote is cast.
-  error InvalidVoteType();
-
-  /// @dev Thrown when proposal is inactive.
-  error ProposalInactive();
-
-  /// @notice The governor contract associated with this governance token. It
-  /// must be one that supports fractional voting, e.g. GovernorCountingFractional.
-  IFractionalGovernor public immutable GOVERNOR;
-
-  /// @notice A mapping of proposal to a mapping of voter address to boolean indicating whether a
-  /// voter has voted or not.
-  mapping(uint256 proposalId => mapping(bytes32 positionKey => bool)) private
-    _proposalVotersHasVoted;
-
-  /// @notice A mapping of proposal id to proposal vote totals.
-  mapping(uint256 proposalId => ProposalVote) public proposalVotes;
 
   /// @param _governor The address of the flex-voting-compatible governance contract.
-  constructor(address _governor, IPoolManager _poolManager) DelegatedLiquidityHook(_poolManager) {
-    GOVERNOR = IFractionalGovernor(_governor);
-  }
+  /// @param _poolManager The address of the pool manager contract.
+  constructor(address _governor, IPoolManager _poolManager)
+    DelegatedLiquidityHook(_poolManager, _governor)
+    FlexVotingClient(_governor)
+  {}
 
-  function getPastBalance(bytes32 positionId, uint256 blockNumber)
-    public
-    returns (uint256, uint256)
-  {
-    /*
-     1. Lookup the tick boundries for this position Id
-     2. Lookup checkpointed liquidity for this position Id
-     3. Lookup checkpointed price for total pool
-     4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens the user is entitled to vote with
-     5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token during initialize callback
-    */
-    uint160 price = poolCheckpoints.getAtProbablyRecentBlock(blockNumber);
-    uint256 liquidity = positionCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
-    return LiquidityAmounts.getAmountsForLiquidity(
-      price, positionId[21:24], positionId[24:27], liquidity
-    ); // Slice these using bit operations
-  }
-
-  /// @notice Where a user can express their vote based on their L2 token voting power.
-  /// @param proposalId The id of the proposal to vote on.
-  /// @param support The type of vote to cast.
-  function castVote(uint256 proposalId, bytes32 positionId, VoteType support)
-    public
-    returns (uint256)
-  {
-    if (!proposalVoteActive(proposalId)) revert ProposalInactive();
-    if (_proposalVotersHasVoted[proposalId][positionId]) revert AlreadyVoted();
-    _proposalVotersHasVoted[proposalId][positionId] = true;
-
-    uint256 weight = 1; // Get weight from the pool
-    if (weight == 0) revert NoWeight();
-
-    if (support == VoteType.Against) {
-      proposalVotes[proposalId].againstVotes += SafeCast.toUint128(weight);
-    } else if (support == VoteType.For) {
-      proposalVotes[proposalId].forVotes += SafeCast.toUint128(weight);
-    } else if (support == VoteType.Abstain) {
-      proposalVotes[proposalId].abstainVotes += SafeCast.toUint128(weight);
-    } else {
-      revert InvalidVoteType();
+  function _rawBalanceOf(address _user) internal view override returns (uint256) {
+    uint256 _rawBalance;
+    for (uint256 i = 0; i < positionsByAddress[_user].length; i++) {
+      _rawBalance += getPastBalance(positionsByAddress[_user][i], block.number);
     }
-    // emit VoteCast(msg.sender, proposalId, support, weight);
-    return weight;
+    return _rawBalance;
   }
 
-  /// @notice Method which returns the deadline for token holders to express their voting
-  /// preferences to this Aggregator contract. Will always be before the Governor's corresponding
-  /// proposal deadline.
-  /// @param proposalId The ID of the proposal.
-  /// @return _lastVotingBlock the voting block where L2 voting ends.
-  function internalVotingPeriodEnd(uint256 proposalId)
-    public
-    view
-    returns (uint256 _lastVotingBlock)
-  {
-    return GOVERNOR.proposalSnapshot(proposalId);
-  }
-
-  function proposalVoteActive(uint256 proposalId) public view returns (bool active) {
-    uint256 deadline = GOVERNOR.proposalSnapshot(proposalId);
-    return block.number <= internalVotingPeriodEnd(proposalId) && block.number >= deadline; // should
-      // be changed to clock
+  function getPastBalance(bytes32 positionId, uint256 blockNumber) public view returns (uint256) {
+    // TODO: make sure these unchecked casts are safe
+    uint160 price = uint160(priceCheckpoints.getAtProbablyRecentBlock(blockNumber));
+    uint128 liquidity =
+      uint128(positionLiquidityCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber));
+    (uint256 token0, uint256 token1) = LiquidityAmounts.getAmountsForLiquidity(
+      price,
+      TickMath.getSqrtRatioAtTick(positionTicks[positionId][0]),
+      TickMath.getSqrtRatioAtTick(positionTicks[positionId][1]),
+      liquidity
+    );
+    return isGovToken0 ? token0 : token1;
   }
 }

@@ -137,5 +137,6 @@ contract CounterTest is Test, TestPoolManager, Deployers, GasSnapshot {
  * 4. ERC20Votes token should be connected to a GovernorCountingFractional Governor which must
  * also be deployed
  * 5. Set up a proposal in the Governor and move it to the state of being ready to be voted on
- * 6. Finally, demonstrate the LP to the pool can vote (through the pool) on the proposal in the Governor
+ * 6. Finally, demonstrate the LP to the pool can vote (through the pool) on the proposal in the
+ * Governor
  */
