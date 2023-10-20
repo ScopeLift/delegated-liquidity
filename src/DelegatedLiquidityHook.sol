@@ -11,8 +11,8 @@ import {Checkpoints} from "openzeppelin-v4/contracts/utils/Checkpoints.sol";
 import {SafeCast} from "openzeppelin-v4/contracts/utils/math/SafeCast.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-
 import {IFractionalGovernor} from "flexible-voting/interfaces/IFractionalGovernor.sol";
+import {FlexVotingClient} from "flexible-voting/FlexVotingClient.sol";
 
 contract DelegatedLiquidityHook is BaseHook {
   using PoolIdLibrary for PoolKey;
@@ -20,8 +20,10 @@ contract DelegatedLiquidityHook is BaseHook {
 
   mapping(bytes32 positionId => Checkpoints.History) internal positionLiquidityCheckpoints;
   Checkpoints.History internal priceCheckpoints;
-
   mapping(bytes32 positionId => int24[2]) internal positionTicks;
+
+  mapping(address => bytes32[]) internal positionsByAddress;
+  mapping(bytes32 => bool) internal seenPosition;
 
   bool public isGovToken0;
   address immutable GOV_TOKEN;
@@ -34,9 +36,9 @@ contract DelegatedLiquidityHook is BaseHook {
     return Hooks.Calls({
       beforeInitialize: false,
       afterInitialize: true,
-      beforeModifyPosition: true,
+      beforeModifyPosition: false,
       afterModifyPosition: true,
-      beforeSwap: true,
+      beforeSwap: false,
       afterSwap: true,
       beforeDonate: false,
       afterDonate: false
@@ -89,6 +91,12 @@ contract DelegatedLiquidityHook is BaseHook {
     (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
     priceCheckpoints.push(sqrtPriceX96);
 
+    // Record position for address
+    if (seenPosition[positionId] == false) {
+      seenPosition[positionId] = true;
+      positionsByAddress[sender].push(positionId);
+    }
+
     selector = BaseHook.afterModifyPosition.selector;
   }
 
@@ -105,53 +113,22 @@ contract DelegatedLiquidityHook is BaseHook {
   }
 }
 
-contract DelegatedFlexClient is DelegatedLiquidityHook {
+contract DelegatedFlexClient is DelegatedLiquidityHook, FlexVotingClient {
   using Checkpoints for Checkpoints.History;
-  /// @dev Data structure to store vote preferences expressed by depositors.
-  // TODO: Does it matter if we use a uint128 vs a uint256?
-
-  struct ProposalVote {
-    uint128 againstVotes;
-    uint128 forVotes;
-    uint128 abstainVotes;
-  }
-
-  /// @dev The voting options corresponding to those used in the Governor.
-  enum VoteType {
-    Against,
-    For,
-    Abstain
-  }
-
-  /// @dev Thrown when an address has no voting weight on a proposal.
-  error NoWeight();
-
-  /// @dev Thrown when an address has already voted.
-  error AlreadyVoted();
-
-  /// @dev Thrown when an invalid vote is cast.
-  error InvalidVoteType();
-
-  /// @dev Thrown when proposal is inactive.
-  error ProposalInactive();
-
-  /// @notice The governor contract associated with this governance token. It
-  /// must be one that supports fractional voting, e.g. GovernorCountingFractional.
-  IFractionalGovernor public immutable GOVERNOR;
-
-  /// @notice A mapping of proposal to a mapping of voter address to boolean indicating whether a
-  /// voter has voted or not.
-  mapping(uint256 proposalId => mapping(bytes32 positionKey => bool)) private
-    _proposalVotersHasVoted;
-
-  /// @notice A mapping of proposal id to proposal vote totals.
-  mapping(uint256 proposalId => ProposalVote) public proposalVotes;
 
   /// @param _governor The address of the flex-voting-compatible governance contract.
+  /// @param _poolManager The address of the pool manager contract.
   constructor(address _governor, IPoolManager _poolManager)
     DelegatedLiquidityHook(_poolManager, _governor)
-  {
-    GOVERNOR = IFractionalGovernor(_governor);
+    FlexVotingClient(_governor)
+  {}
+
+  function _rawBalanceOf(address _user) public override returns (uint256) {
+    uint256 _rawBalance;
+    for (uint256 i = 0; i < positionsByAddress[_user].length; i++) {
+      _rawBalance += getPastBalance(positionsByAddress[_user][i], block.number);
+    }
+    return _rawBalance;
   }
 
   function getPastBalance(bytes32 positionId, uint256 blockNumber) public view returns (uint256) {
@@ -166,51 +143,5 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
       liquidity
     );
     return isGovToken0 ? token0 : token1;
-  }
-
-  /// @notice Where a user can express their vote based on their L2 token voting power.
-  /// @param proposalId The id of the proposal to vote on.
-  /// @param support The type of vote to cast.
-  function castVote(uint256 proposalId, bytes32 positionId, VoteType support)
-    public
-    returns (uint256)
-  {
-    if (!proposalVoteActive(proposalId)) revert ProposalInactive();
-    if (_proposalVotersHasVoted[proposalId][positionId]) revert AlreadyVoted();
-    _proposalVotersHasVoted[proposalId][positionId] = true;
-
-    uint256 weight = 1; // Get weight from the pool
-    if (weight == 0) revert NoWeight();
-
-    if (support == VoteType.Against) {
-      proposalVotes[proposalId].againstVotes += SafeCast.toUint128(weight);
-    } else if (support == VoteType.For) {
-      proposalVotes[proposalId].forVotes += SafeCast.toUint128(weight);
-    } else if (support == VoteType.Abstain) {
-      proposalVotes[proposalId].abstainVotes += SafeCast.toUint128(weight);
-    } else {
-      revert InvalidVoteType();
-    }
-    // emit VoteCast(msg.sender, proposalId, support, weight);
-    return weight;
-  }
-
-  /// @notice Method which returns the deadline for token holders to express their voting
-  /// preferences to this Aggregator contract. Will always be before the Governor's corresponding
-  /// proposal deadline.
-  /// @param proposalId The ID of the proposal.
-  /// @return _lastVotingBlock the voting block where L2 voting ends.
-  function internalVotingPeriodEnd(uint256 proposalId)
-    public
-    view
-    returns (uint256 _lastVotingBlock)
-  {
-    return GOVERNOR.proposalSnapshot(proposalId);
-  }
-
-  function proposalVoteActive(uint256 proposalId) public view returns (bool active) {
-    uint256 deadline = GOVERNOR.proposalSnapshot(proposalId);
-    return block.number <= internalVotingPeriodEnd(proposalId) && block.number >= deadline; // should
-      // be changed to clock
   }
 }
