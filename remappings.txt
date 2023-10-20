@@ -1,3 +1,5 @@
 @uniswap/v4-core/=lib/v4-core/
 @uniswap/v4-periphery/=lib/v4-periphery/
 @openzeppelin/=lib/v4-periphery/lib/openzeppelin-contracts/
+openzeppelin-v4/=lib/openzeppelin-contracts/
+flexible-voting/=lib/flexible-voting/src/
