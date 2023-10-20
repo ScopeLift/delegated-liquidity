@@ -10,6 +10,7 @@ import {PoolKey, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.so
 import {Checkpoints} from "openzeppelin-v4/contracts/utils/Checkpoints.sol";
 import {SafeCast} from "openzeppelin-v4/contracts/utils/math/SafeCast.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 import {IFractionalGovernor} from "flexible-voting/interfaces/IFractionalGovernor.sol";
 
@@ -153,26 +154,18 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
     GOVERNOR = IFractionalGovernor(_governor);
   }
 
-  function getPastBalance(bytes32 positionId, uint256 blockNumber)
-    public
-    returns (uint256, uint256)
-  {
-    /*
-     1. Lookup the tick boundries for this position Id
-     2. Lookup checkpointed liquidity for this position Id
-     3. Lookup checkpointed price for total pool
-    4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens
-    the user is entitled to vote with //
-    https://github.com/Uniswap/v4-periphery/blob/main/contracts/libraries/LiquidityAmounts.sol#L117-L134
-    5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token
-    during initialize callback
-    */
-    uint160 price = priceCheckpoints.getAtProbablyRecentBlock(blockNumber);
-    uint256 liquidity =
-      positionLiquidityCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
-    return LiquidityAmounts.getAmountsForLiquidity(
-      price, positionId[21:24], positionId[24:27], liquidity
-    ); // Slice these using bit operations
+  function getPastBalance(bytes32 positionId, uint256 blockNumber) public view returns (uint256) {
+    // TODO: make sure these unchecked casts are safe
+    uint160 price = uint160(priceCheckpoints.getAtProbablyRecentBlock(blockNumber));
+    uint128 liquidity =
+      uint128(positionLiquidityCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber));
+    (uint256 token0, uint256 token1) = LiquidityAmounts.getAmountsForLiquidity(
+      price,
+      TickMath.getSqrtRatioAtTick(positionTicks[positionId][0]),
+      TickMath.getSqrtRatioAtTick(positionTicks[positionId][1]),
+      liquidity
+    );
+    return isGovToken0 ? token0 : token1;
   }
 
   /// @notice Where a user can express their vote based on their L2 token voting power.
