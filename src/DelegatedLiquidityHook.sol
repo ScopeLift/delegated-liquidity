@@ -9,6 +9,7 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {Checkpoints} from "openzeppelin-v4/contracts/utils/Checkpoints.sol";
 import {SafeCast} from "openzeppelin-v4/contracts/utils/math/SafeCast.sol";
+import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
 import {IFractionalGovernor} from "flexible-voting/interfaces/IFractionalGovernor.sol";
 
@@ -19,18 +20,17 @@ contract DelegatedLiquidityHook is BaseHook {
   mapping(bytes32 positionId => Checkpoints.History) internal positionCheckpoints;
   Checkpoints.History internal poolCheckpoints;
 
-  constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+  bool public isGovToken0;
+  address immutable GOV_TOKEN;
 
-  /*
-    Our contract stores the gov token address (part of constructor)
-    Receives the afterInitialize callback and records which token (token0 or token1) is the gov token
-    Uses this to return appropriate values in other methods
-   */
+  constructor(IPoolManager _poolManager, address _governor) BaseHook(_poolManager) {
+    GOV_TOKEN = IFractionalGovernor(_governor).token();
+  }
 
   function getHooksCalls() public pure override returns (Hooks.Calls memory) {
     return Hooks.Calls({
       beforeInitialize: false,
-      afterInitialize: false,
+      afterInitialize: true,
       beforeModifyPosition: true,
       afterModifyPosition: true,
       beforeSwap: true,
@@ -38,6 +38,26 @@ contract DelegatedLiquidityHook is BaseHook {
       beforeDonate: false,
       afterDonate: false
     });
+  }
+
+  /**
+   * @notice Callback after a pool is initialized. Record which token (token0 or token1) is the gov
+   * token, to return appropriate values in other methods
+   */
+  function afterInitialize(
+    address, // sender
+    PoolKey calldata key,
+    uint160, // sqrtPriceX96
+    int24, // tick
+    bytes calldata // hookData
+  ) external override returns (bytes4 selector) {
+    //
+    isGovToken0 = Currency.unwrap(key.currency0) == GOV_TOKEN;
+    // If neither token in the pair is the gov token, revert
+    if (!isGovToken0 && Currency.unwrap(key.currency1) != GOV_TOKEN) {
+      revert("Currency pair does not include governor token");
+    }
+    selector = BaseHook.afterInitialize.selector;
   }
 
   function afterModifyPosition(
@@ -126,7 +146,9 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
   mapping(uint256 proposalId => ProposalVote) public proposalVotes;
 
   /// @param _governor The address of the flex-voting-compatible governance contract.
-  constructor(address _governor, IPoolManager _poolManager) DelegatedLiquidityHook(_poolManager) {
+  constructor(address _governor, IPoolManager _poolManager)
+    DelegatedLiquidityHook(_poolManager, _governor)
+  {
     GOVERNOR = IFractionalGovernor(_governor);
   }
 
@@ -138,8 +160,10 @@ contract DelegatedFlexClient is DelegatedLiquidityHook {
      1. Lookup the tick boundries for this position Id
      2. Lookup checkpointed liquidity for this position Id
      3. Lookup checkpointed price for total pool
-     4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens the user is entitled to vote with
-     5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token during initialize callback
+    4. Pass all 4 params to LiquidityAmounts.getAmountsForLiquidity to get the amount of Gov tokens
+    the user is entitled to vote with
+    5. Return either amount0 or amount1 from step 4 based on which token was recorded as Gov token
+    during initialize callback
     */
     uint160 price = poolCheckpoints.getAtProbablyRecentBlock(blockNumber);
     uint256 liquidity = positionCheckpoints[positionId].getAtProbablyRecentBlock(blockNumber);
