@@ -24,11 +24,6 @@ import {HookMiner} from "test/utils/HookMiner.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 
-// Test adding to a pool
-// Once added then you should be able to vote on a proposal
-
-/// Hooks and test are based off of
-/// https://github.com/naddison36/uniswap-v4-hooks/blob/f47e5bd14a551b3a44b737123150ae8cf29e25a1/test/Counter.t.sol
 contract DelegatedLiquidityHookTest is HookTest, Deployers {
   using PoolIdLibrary for PoolKey;
   using CurrencyLibrary for Currency;
@@ -50,14 +45,6 @@ contract DelegatedLiquidityHookTest is HookTest, Deployers {
   );
 
   function setUp() public {
-    // Create the pool
-    // poolKey = PoolKey(
-    //   Currency.wrap(address(erc20Votes)),
-    //   Currency.wrap(address(erc20)),
-    //   FeeLibrary.HOOK_SWAP_FEE_FLAG | FeeLibrary.HOOK_WITHDRAW_FEE_FLAG | uint24(0),
-    //   60,
-    //   IHooks(hook)
-    // );
     // Helpers for interacting with the pool
     // creates the pool manager, test tokens, and other utility routers
     HookTest.initHookTestEnv();
@@ -105,10 +92,6 @@ contract DelegatedLiquidityHookTest is HookTest, Deployers {
     );
   }
 }
-
-// Test adding liquidity to the pool
-// Test swapping
-// Then test voting
 
 contract AddLiquidity is DelegatedLiquidityHookTest {
   function testFuzz_addLiquidity() public {}
