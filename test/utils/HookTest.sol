@@ -17,6 +17,7 @@ import {GovernorTokenMock} from "test/mocks/GovernorTokenMock.sol";
 
 /// @notice Contract to initialize some test helpers
 /// @dev Minimal initialization. Inheriting contract should set up pools and provision liquidity
+/// Source: https://github.com/saucepoint/v4-template/blob/d69c148cd12919f6a10eb880b22f530346b6be75/test/utils/HookTest.sol
 contract HookTest is Test {
   PoolManager manager;
   PoolModifyPositionTest modifyPositionRouter;
