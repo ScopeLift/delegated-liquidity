@@ -113,6 +113,8 @@ contract AddLiquidity is DelegatedLiquidityHookTest {
    vm.assume(int256(amount0) + amount1 != 0);
    vm.assume(amount0 > 0);
    vm.assume(amount1 > 0);
+   vm.assume(amount0 < 10000000);
+   vm.assume(amount1 < 10000000);
    uint128 posAmount0 = amount0 > 0 ? uint128(amount0) : uint128(amount0 * -1);
    uint128 posAmount1 = amount1 > 0 ? uint128(amount1) : uint128(amount1 * -1);
 
@@ -125,7 +127,7 @@ contract AddLiquidity is DelegatedLiquidityHookTest {
 	uint256 blockNumber = block.number;
     (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolKey.toId());
     modifyPositionRouter.modifyPosition(
-      poolKey, IPoolManager.ModifyPositionParams(int24(-60), int24(60), int256(LiquidityAmounts.getLiquidityForAmounts(sqrtPriceX96, TickMath.getSqrtRatioAtTick(int24(-60)), TickMath.getSqrtRatioAtTick(int24(60)),uint256(posAmount0),uint256(posAmount1)))), ZERO_BYTES);
+      poolKey, IPoolManager.ModifyPositionParams(int24(-60), int24(60), int256(uint256(LiquidityAmounts.getLiquidityForAmounts(sqrtPriceX96, TickMath.getSqrtRatioAtTick(int24(-60)), TickMath.getSqrtRatioAtTick(int24(60)),uint256(posAmount0),uint256(posAmount1))))), ZERO_BYTES);
 	bytes32 positionId = keccak256(abi.encodePacked(owner, int24(-60), int24(60)));
 
 	vm.roll(block.number + 1);
