@@ -9,6 +9,7 @@ import {MockToken} from "test/mocks/MockToken.sol"; // Should be renamed
 import {DelegatedFlexClientHarness} from "test/harnesses/DelegatedFlexClientHarness.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolKey, PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
@@ -23,6 +24,9 @@ import {HookTest} from "test/utils/HookTest.sol";
 import {HookMiner} from "test/utils/HookMiner.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {LiquidityAmounts} from "v4-periphery/libraries/LiquidityAmounts.sol";
+
+import {console2} from "forge-std/console2.sol";
 
 contract DelegatedLiquidityHookTest is HookTest, Deployers {
   using PoolIdLibrary for PoolKey;
@@ -93,6 +97,40 @@ contract DelegatedLiquidityHookTest is HookTest, Deployers {
   }
 }
 
+
+// Test single position 
+//
+// 1. Vote abstain
+// 2. vote for
+// 3. vote against
+//
+// Test add a position and then doing a swap
 contract AddLiquidity is DelegatedLiquidityHookTest {
-  function testFuzz_addLiquidity() public {}
+  using PoolIdLibrary for PoolKey;
+
+  function test_castVoteAbstain(address owner, int128 amount0, int128 amount1) public {
+   vm.assume(address(0) != owner);
+   vm.assume(int256(amount0) + amount1 != 0);
+   vm.assume(amount0 > 0);
+   vm.assume(amount1 > 0);
+   uint128 posAmount0 = amount0 > 0 ? uint128(amount0) : uint128(amount0 * -1);
+   uint128 posAmount1 = amount1 > 0 ? uint128(amount1) : uint128(amount1 * -1);
+
+    vm.prank(owner);
+    token0.mint(owner, posAmount0);
+    token1.mint(owner, posAmount1);
+    token0.approve(address(modifyPositionRouter), posAmount0);
+    token1.approve(address(modifyPositionRouter), posAmount1);
+
+	uint256 blockNumber = block.number;
+    (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolKey.toId());
+    modifyPositionRouter.modifyPosition(
+      poolKey, IPoolManager.ModifyPositionParams(int24(-60), int24(60), int256(LiquidityAmounts.getLiquidityForAmounts(sqrtPriceX96, TickMath.getSqrtRatioAtTick(int24(-60)), TickMath.getSqrtRatioAtTick(int24(60)),uint256(posAmount0),uint256(posAmount1)))), ZERO_BYTES);
+	bytes32 positionId = keccak256(abi.encodePacked(owner, int24(-60), int24(60)));
+
+	vm.roll(block.number + 1);
+	uint256 amount = client.getPastBalance(positionId, blockNumber);
+	console2.logUint(amount);
+ 
+  }
 }
