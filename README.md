@@ -1,159 +1,75 @@
-# ScopeLift Foundry Template
+# Delegated Liquidity
 
-An opinionated template for [Foundry](https://github.com/foundry-rs/foundry) projects.
+<div align="center">
+	<img width="400" src="readme/liquid-geometric-1.png" alt="Delegated Liquidity Banner">
+	<br />
+	<br />
+</div>
 
-_**Please read the full README before using this template.**_
+<p align="center">
+	<b>Vote with governance tokens while providing liquidity to Uniswap v4.</b>
+</p>
 
-- [Usage](#usage)
-- [Overview](#overview)
-  - [`foundry.toml`](#foundrytoml)
-  - [CI](#ci)
-  - [Test Structure](#test-structure)
-- [Configuration](#configuration)
-  - [Coverage](#coverage)
-  - [Slither](#slither)
-  - [GitHub Code Scanning](#github-code-scanning)
+<div align="center">
+	<img width="150" src="readme/ethereum-badge-light.png" alt="Ethereum Badge">
+	<br />
+</div>
 
-## Usage
+<p align="center">
+	🏗️ <a href="https://twitter.com/scopelift">@ScopeLift</a>
+</p>
 
-To use this template, use one of the below approaches:
 
-1. Run `forge init --template ScopeLift/foundry-template` in an empty directory.
-2. Click [here](https://github.com/ScopeLift/foundry-template/generate) to generate a new repository from this template.
-3. Click the "Use this template" button from this repo's [home page](https://github.com/ScopeLift/foundry-template).
+⚠️⚠️ This codebase is currently a hackathon project quality. It should not be deployed in production as-is. Use this code at your own risk. ⚠️⚠️
 
-It's also recommend to install [scopelint](https://github.com/ScopeLift/scopelint), which is used in CI.
-You can run this locally with `scopelint fmt` and `scopelint check`.
-Note that these are supersets of `forge fmt` and `forge fmt --check`, so you do not need to run those forge commands when using scopelint.
+## What it does
 
-## Overview
+Delegated Liquidity is a Uniswap v4 Hook that allows holders of DAO governance tokens to provide liquidity while retaining the right to participate in governance votes with their share of tokens in the pool.
 
-This template is designed to be a simple but powerful configuration for Foundry projects, that aims to help you follow Solidity and Foundry [best practices](https://book.getfoundry.sh/tutorials/best-practices)
-Writing secure contracts is hard, so it ships with strict defaults that you can loosen as needed.
+<div align="center">
+	<img width="800" src="readme/flex-voting-faucet-transparent-bg.png" alt="Delegated Liquidity Diagram">
+	<br />
+	<br />
+</div>
 
-### `foundry.toml`
+Normally, when a holder of a governance token deposits them into a DeFi protocol, they lose the ability to vote with those tokens. That's because the tokens are held by protocol—such as the pool contract in the case of Uniswap—and the governance contracts no longer recognize the LP's ownership of them as a result.
 
-The `foundry.toml` config file comes with:
+[Flexible Voting](https://flexiblevoting.com) is an extension to the standard DAO governance contracts that allows for voting integrations to be built which overcome this limitation. It was developed by ScopeLift and has been adopted by real DAOs, including Gitcoin, PoolTogether, and Frax Finance.
 
-- A `fmt` configuration.
-- `default`, `lite`, and `ci` profiles.
+By leveraging Flexible Voting and v4 Hooks, we built a Pool that enables governance token holders to LP without losing their voting rights.
 
-Both of these can of course be modified.
-The `default` and `ci` profiles use the same solc build settings, which are intended to be the production settings, but the `ci` profile is configured to run deeper fuzz and invariant tests.
-The `lite` profile turns the optimizer off, which is useful for speeding up compilation times during development.
 
-It's recommended to keep the solidity configuration of the `default` and `ci` profiles in sync, to avoid accidentally deploying contracts with suboptimal configuration settings when running `forge script`.
-This means you can change the solc settings in the `default` profile and the `lite` profile, but never for the `ci` profile.
+## How it works
 
-Note that the `foundry.toml` file is formatted using [Taplo](https://taplo.tamasfe.dev/) via `scopelint fmt`.
+When an LP creates or modifies a position, or when a user executes a swap, the Delegated Liquidity contract receives a callback. We use this callback to record checkpointed data about the state of the Pool and the LP's positions in it.
 
-### CI
+By tracking these changes to the Pool's state, we can calculate the share of the tokens any given LP has a claim to at any given time. You can think of this calculation in this way: if the LP were to close their position right now, how many governance tokens would they be entitled to? That number represents the share of Pool's liquidity the LP ought to be able vote with.
 
-Robust CI is also included, with a GitHub Actions workflow that does the following:
+The Delegated Liquidity contract  allows LPs to express their vote for their share of the tokens, and records these votes internally. Finally, the Delegated Liquidity contract passes the votes of all LPs forward to the Governor contract by leveraging the Flexible Voting extension, which enables fractional voting by delegates. In this case, the Delegated Liquidity acts as the voting delegate on behalf of the Pool.
 
-- Runs tests with the `ci` profile.
-- Verifies contracts are within the [size limit](https://eips.ethereum.org/EIPS/eip-170) of 24576 bytes.
-- Runs `forge coverage` and verifies a minimum coverage threshold is met.
-- Runs `slither`, integrated with GitHub's [code scanning](https://docs.github.com/en/code-security/code-scanning). See the [Configuration](#configuration) section to learn more.
+The contracts were built and tested using Foundry and the Uniswap v4 development template. We the hook contract and the integration with governance, along with tests which simulate the process of an LP voting on an active proposal with their share of the liquidity.
 
-The CI also runs [scopelint](https://github.com/ScopeLift/scopelint) to verify formatting and best practices:
+## Development
 
-- Checks that Solidity and TOML files have been formatted.
-  - Solidity checks use the `foundry.toml` config.
-  - Currently the TOML formatting cannot be customized.
-- Validates test names follow a convention of `test(Fork)?(Fuzz)?_(Revert(If_|When_){1})?\w{1,}`. [^naming-convention]
-- Validates constants and immutables are in `ALL_CAPS`.
-- Validates internal functions in `src/` start with a leading underscore.
-- Validates function names and visibility in forge scripts to 1 public `run` method per script. [^script-abi]
+This project uses [Foundry](https://github.com/foundry-rs/foundry). Follow [these instructions](https://github.com/foundry-rs/foundry#installation) to install it.
 
-Note that the foundry-toolchain GitHub Action will cache RPC responses in CI by default, and it will also update the cache when you update your fork tests.
+Clone the repo.
 
-### Test Structure
-
-The test structure is configured to follow recommended [best practices](https://book.getfoundry.sh/tutorials/best-practices).
-It's strongly recommended to read that document, as it covers a range of aspects.
-Consequently, the test structure is as follows:
-
-- The core protocol deploy script is `script/Deploy.sol`.
-  This deploys the contracts and saves their addresses to storage variables.
-- The tests inherit from this deploy script and execute `Deploy.run()` in their `setUp` method.
-  This has the effect of running all tests against your deploy script, giving confidence that your deploy script is correct.
-- Each test contract serves as `describe` block to unit test a function, e.g. `contract Increment` to test the `increment` function.
-
-## Configuration
-
-After creating a new repository from this template, make sure to set any desired [branch protections](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/about-protected-branches) on your repo.
-
-### Coverage
-
-The [`ci.yml`](.github/workflows/ci.yml) has `coverage` configured by default, and contains comments explaining how to modify the configuration.
-It uses:
-The [lcov] CLI tool to filter out the `test/` and `script/` folders from the coverage report.
-
-- The [romeovs/lcov-reporter-action](https://github.com/romeovs/lcov-reporter-action) action to post a detailed coverage report to the PR. Subsequent commits on the same branch will automatically delete stale coverage comments and post new ones.
-- The [zgosalvez/github-actions-report-lcov](https://github.com/zgosalvez/github-actions-report-lcov) action to fail coverage if a minimum coverage threshold is not met.
-
-Be aware of foundry's current coverage limitations:
-
-- You cannot filter files/folders from `forge` directly, so `lcov` is used to do this.
-- `forge coverage` always runs with the optimizer off and without via-ir, so if you need either of these to compile you will not be able to run coverage.
-
-Remember not to optimize for coverage, but to optimize for [well thought-out tests](https://book.getfoundry.sh/tutorials/best-practices?highlight=coverage#best-practices-1).
-
-### Slither
-
-In [`ci.yml`](.github/workflows/ci.yml), you'll notice Slither is configured as follows:
-
-```yml
-slither-args: --filter-paths "./lib|./test" --exclude naming-convention,solc-version
+```bash
+git clone git@github.com:ScopeLift/delegated-liquidity.git
+cd delegated-liquidity
 ```
 
-This means Slither is not run on the `lib` or `test` folders, and the [`naming-convention`](https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions) and [solc-version](https://github.com/crytic/slither/wiki/Detector-Documentation#incorrect-versions-of-solidity) checks are disabled.
+Instal dependencies & run tests.
 
-This `slither-args` field is where you can change the Slither configuration for your project, and the defaults above can of course be changed.
+```bash
+forge install
+forge build
+forge test
+```
 
-Notice that Slither will run against `script/` by default.
-Carefully written and tested scripts are key to ensuring complex deployment and scripting pipelines execute as planned, but you are free to disable Slither checks on the scripts folder if it feels like overkill for your use case.
+## License
 
-For more information on configuration Slither, see [the documentation](https://github.com/crytic/slither/wiki/Usage). For more information on configuring the slither action, see the [slither-action](https://github.com/crytic/slither-action) repo.
+This project is available under the [MIT](LICENSE.txt) license.
 
-### GitHub Code Scanning
-
-As mentioned, the Slither CI step is integrated with GitHub's [code scanning](https://docs.github.com/en/code-security/code-scanning) feature.
-This means when your jobs execute, you'll see two related checks:
-
-1. `CI / slither-analyze`
-2. `Code scanning results / Slither`
-
-The first check is the actual Slither analysis.
-You'll notice in the [`ci.yml`](.github/workflows/ci.yml) file that this check has a configuration of `fail-on: none`.
-This means this step will _never_ fail CI, no matter how many findings there are or what their severity is.
-Instead, this check outputs the findings to a SARIF file[^sarif] to be used in the next check.
-
-The second check is the GitHub code scanning check.
-The `slither-analyze` job uploads the SARIF report to GitHub, which is then analyzed by GitHub's code scanning feature in this step.
-This is the check that will fail CI if there are Slither findings.
-
-By default when you create a repository, only alerts with the severity level of `Error` will cause a pull request check failure, and checks will succeed with alerts of lower severities.
-However, you can [configure](https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#defining-the-severities-causing-pull-request-check-failure) which level of slither results cause PR check failures.
-
-It's recommended to conservatively set the failure level to `Any` to start, and to reduce the failure level if you are unable to sufficiently tune Slither or find it to be too noisy.
-
-Findings are shown directly on the PR, as well as in your repo's "Security" tab, under the "Code scanning" section.
-Alerts that are dismissed are remembered by GitHub, and will not be shown again on future PRs.
-
-Note that code scanning integration [only works](https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/setting-up-code-scanning-for-a-repository) for public repos, or private repos with GitHub Enterprise Cloud and a license for GitHub Advanced Security.
-If you have a private repo and don't want to purchase a license, the best option is probably to:
-
-- Remove the `Upload SARIF file` step from CI.
-- Change the `Run Slither` step to `fail-on` whichever level you like, and remove the `sarif` output.
-- Use [triage mode](https://github.com/crytic/slither/wiki/Usage#triage-mode) locally and commit the resulting `slither.db.json` file, and make sure CI has access to that file.
-
-[^naming-convention]:
-    A rigorous test naming convention is important for ensuring that tests are easy to understand and maintain, while also making filtering much easier.
-    For example, one benefit is filtering out all reverting tests when generating gas reports.
-
-[^script-abi]: Limiting scripts to a single public method makes it easier to understand a script's purpose, and facilitates composability of simple, atomic scripts.
-[^sarif]:
-    [SARIF](https://sarifweb.azurewebsites.net/) (Static Analysis Results Interchange Format) is an industry standard for static analysis results.
-    You can read learn more about SARIF [here](https://github.com/microsoft/sarif-tutorials) and read about GitHub's SARIF support [here](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning).
+Copyright (c) 2023 [ScopeLift](https://scopelift.co).
