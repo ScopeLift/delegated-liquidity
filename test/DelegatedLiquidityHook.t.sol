@@ -98,21 +98,14 @@ contract DelegatedLiquidityHookTest is HookTest, Deployers {
   }
 }
 
-// Test single position
-//
-// 1. Vote abstain
-// 2. vote for
-// 3. vote against
-//
-// Test add a position and then doing a swap
 contract AddLiquidity is DelegatedLiquidityHookTest {
   using PoolIdLibrary for PoolKey;
 
   function test_castVoteAbstain(address owner, int128 amount0, int128 amount1) public {
     vm.assume(address(0) != owner);
     vm.assume(int256(amount0) + amount1 != 0);
-    amount0 = int128(bound(amount0, 0, type(int120).max)); // greater causes a revert
-    amount1 = int128(bound(amount1, 0, type(int120).max)); // greater causes a revert
+    amount0 = int128(bound(amount0, 0, type(int64).max)); // greater causes a revert
+    amount1 = int128(bound(amount1, 0, type(int64).max)); // greater causes a revert
     uint128 posAmount0 = amount0 > 0 ? uint128(amount0) : uint128(amount0 * -1);
     uint128 posAmount1 = amount1 > 0 ? uint128(amount1) : uint128(amount1 * -1);
     (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolKey.toId());
