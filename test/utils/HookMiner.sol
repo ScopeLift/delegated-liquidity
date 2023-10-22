@@ -4,7 +4,8 @@ pragma solidity ^0.8.20;
 /// @title HookMiner - a library for mining hook addresses
 /// @dev This library is intended for `forge test` environments. There may be gotchas when using
 /// salts in `forge script` or `forge create`
-/// Source https://github.com/saucepoint/v4-template/blob/d69c148cd12919f6a10eb880b22f530346b6be75/test/utils/HookMiner.sol
+/// Source
+/// https://github.com/saucepoint/v4-template/blob/d69c148cd12919f6a10eb880b22f530346b6be75/test/utils/HookMiner.sol
 library HookMiner {
   // mask to slice out the top 8 bit of the address
   uint160 constant FLAG_MASK = 0xFF << 152;
